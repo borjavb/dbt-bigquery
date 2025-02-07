@@ -27,6 +27,15 @@
 
 {% endmacro %}
 
+{% macro set_partitions(config) %}
+  {#-- We override the partitions to force a static insert overwrite on microbatch, significantly more performant --#}
+  {% if strategy = "microbatch" %}
+    {{ return(bq_generate_static_partitions(config, partition_by.granularity)) }}
+  {% else %}
+    {{ return(partitions = config.get('partitions', none)) }}
+  {% endif %}
+{% endmacro %}
+
 {% macro bq_create_table_as(partition_by, temporary, relation, compiled_code, language='sql') %}
   {%- set _dbt_max_partition = declare_dbt_max_partition(this, partition_by, compiled_code, language) -%}
   {% if partition_by.time_ingestion_partitioning and language == 'python' %}
@@ -69,6 +78,16 @@
 
 {% endmacro %}
 
+
+{% macro set_partitions(strategy, granularity) %}
+  {#-- We override the partitions to force a static insert overwrite on microbatch, significantly more performant --#}
+  {% if strategy == "microbatch" %}
+    {{ return(bq_generate_static_partitions(config, granularity)) }}
+  {% else %}
+    {{ return(config.get('partitions', none)) }}
+  {% endif %}
+{% endmacro %}
+
 {% materialization incremental, adapter='bigquery', supported_languages=['sql', 'python'] -%}
 
   {%- set unique_key = config.get('unique_key') -%}
@@ -84,9 +103,8 @@
 
   {%- set raw_partition_by = config.get('partition_by', none) -%}
   {%- set partition_by = adapter.parse_partition_by(raw_partition_by) -%}
-  {%- set partitions = config.get('partitions', none) -%}
+  {%- set partitions = set_partitions(strategy, partition_by.granularity) -%}
   {%- set cluster_by = config.get('cluster_by', none) -%}
-
   {% set on_schema_change = incremental_validate_on_schema_change(config.get('on_schema_change'), default='ignore') %}
   {% set incremental_predicates = config.get('predicates', default=none) or config.get('incremental_predicates', default=none) %}
 
